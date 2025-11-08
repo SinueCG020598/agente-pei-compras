@@ -1,0 +1,32 @@
+FROM python:3.11-slim
+
+# Metadata
+LABEL maintainer="PEI Team <dev@pei.com>"
+LABEL version="0.1.0"
+LABEL description="PEI Compras AI - Frontend Streamlit"
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Set working directory
+WORKDIR /app
+
+# Install requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Expose Streamlit port
+EXPOSE 8501
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+
+# Run Streamlit
+CMD ["streamlit", "run", "frontend/app.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
