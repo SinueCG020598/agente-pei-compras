@@ -16,9 +16,11 @@ from src.database.models import (
     RFQ,
     Cotizacion,
     OrdenCompra,
+    EnvioTracking,
     EstadoSolicitud,
     EstadoRFQ,
     EstadoOrdenCompra,
+    EstadoEnvio,
 )
 from config.logging_config import logger
 
@@ -576,9 +578,292 @@ class CRUDOrdenCompra(CRUDBase[OrdenCompra]):
         return None
 
 
+class CRUDEnvioTracking(CRUDBase[EnvioTracking]):
+    """Operaciones CRUD específicas para Envío Tracking."""
+
+    def get_by_orden_compra(
+        self, db: Session, orden_compra_id: int
+    ) -> Optional[EnvioTracking]:
+        """
+        Obtiene el tracking de una orden de compra.
+
+        Args:
+            db: Sesión de base de datos
+            orden_compra_id: ID de la orden de compra
+
+        Returns:
+            EnvioTracking encontrado o None
+        """
+        return (
+            db.query(EnvioTracking)
+            .filter(EnvioTracking.orden_compra_id == orden_compra_id)
+            .first()
+        )
+
+    def get_by_tracking_number(
+        self, db: Session, tracking_number: str
+    ) -> Optional[EnvioTracking]:
+        """
+        Obtiene envío por número de tracking.
+
+        Args:
+            db: Sesión de base de datos
+            tracking_number: Número de tracking
+
+        Returns:
+            EnvioTracking encontrado o None
+        """
+        return (
+            db.query(EnvioTracking)
+            .filter(EnvioTracking.tracking_number == tracking_number)
+            .first()
+        )
+
+    def get_by_estado(
+        self, db: Session, estado: EstadoEnvio, skip: int = 0, limit: int = 100
+    ) -> List[EnvioTracking]:
+        """
+        Obtiene envíos por estado.
+
+        Args:
+            db: Sesión de base de datos
+            estado: Estado del envío
+            skip: Registros a saltar
+            limit: Límite de registros
+
+        Returns:
+            Lista de envíos
+        """
+        return (
+            db.query(EnvioTracking)
+            .filter(EnvioTracking.estado == estado)
+            .order_by(desc(EnvioTracking.updated_at))
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
+    def get_pendientes(
+        self, db: Session, skip: int = 0, limit: int = 100
+    ) -> List[EnvioTracking]:
+        """
+        Obtiene envíos pendientes (no entregados).
+
+        Args:
+            db: Sesión de base de datos
+            skip: Registros a saltar
+            limit: Límite de registros
+
+        Returns:
+            Lista de envíos pendientes
+        """
+        estados_pendientes = [
+            EstadoEnvio.PENDIENTE,
+            EstadoEnvio.EN_TRANSITO,
+            EstadoEnvio.EN_ADUANA,
+            EstadoEnvio.EN_DISTRIBUCION,
+            EstadoEnvio.EN_ENTREGA,
+        ]
+        return (
+            db.query(EnvioTracking)
+            .filter(EnvioTracking.estado.in_(estados_pendientes))
+            .order_by(asc(EnvioTracking.fecha_entrega_estimada))
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
+    def actualizar_estado(
+        self, db: Session, envio_id: int, nuevo_estado: EstadoEnvio, ubicacion: str = None
+    ) -> Optional[EnvioTracking]:
+        """
+        Actualiza el estado de un envío.
+
+        Args:
+            db: Sesión de base de datos
+            envio_id: ID del envío
+            nuevo_estado: Nuevo estado
+            ubicacion: Nueva ubicación (opcional)
+
+        Returns:
+            EnvioTracking actualizado o None
+        """
+        envio = self.get(db, envio_id)
+        if envio:
+            datos_actualizar = {"estado": nuevo_estado}
+
+            if ubicacion:
+                datos_actualizar["ubicacion_actual"] = ubicacion
+
+            # Si se marca como entregado, registrar fecha
+            if nuevo_estado == EstadoEnvio.ENTREGADO and not envio.fecha_entrega_real:
+                datos_actualizar["fecha_entrega_real"] = datetime.utcnow()
+
+            return self.update(db, db_obj=envio, obj_in=datos_actualizar)
+        return None
+
+    def agregar_evento(
+        self, db: Session, envio_id: int, evento: dict
+    ) -> Optional[EnvioTracking]:
+        """
+        Agrega un evento al historial de tracking.
+
+        Args:
+            db: Sesión de base de datos
+            envio_id: ID del envío
+            evento: Diccionario con info del evento (timestamp, ubicacion, descripcion)
+
+        Returns:
+            EnvioTracking actualizado o None
+        """
+        envio = self.get(db, envio_id)
+        if envio:
+            eventos = envio.eventos or []
+            eventos.append({
+                **evento,
+                "timestamp": evento.get("timestamp", datetime.utcnow().isoformat())
+            })
+            return self.update(db, db_obj=envio, obj_in={"eventos": eventos})
+        return None
+
+
+def consultar_historial(db: Session, solicitud_id: int) -> dict:
+    """
+    Obtiene el historial completo de una solicitud con todas sus relaciones.
+
+    Devuelve una vista completa del ciclo de vida de una solicitud:
+    - Solicitud original
+    - RFQs enviados a proveedores
+    - Cotizaciones recibidas
+    - Orden de compra generada (si existe)
+    - Tracking de envío (si existe)
+
+    Args:
+        db: Sesión de base de datos
+        solicitud_id: ID de la solicitud
+
+    Returns:
+        Diccionario con todo el historial o None si no existe
+
+    Example:
+        >>> historial = consultar_historial(db, solicitud_id=123)
+        >>> print(historial["solicitud"]["estado"])
+        >>> print(historial["rfqs"][0]["proveedor"]["nombre"])
+        >>> print(historial["orden_compra"]["tracking"]["estado"])
+    """
+    # Obtener solicitud con todas las relaciones
+    solicitud_obj = db.query(Solicitud).filter(Solicitud.id == solicitud_id).first()
+
+    if not solicitud_obj:
+        return None
+
+    # Construir respuesta estructurada
+    resultado = {
+        "solicitud": {
+            "id": solicitud_obj.id,
+            "usuario_nombre": solicitud_obj.usuario_nombre,
+            "usuario_contacto": solicitud_obj.usuario_contacto,
+            "descripcion": solicitud_obj.descripcion,
+            "categoria": solicitud_obj.categoria,
+            "cantidad": solicitud_obj.cantidad,
+            "presupuesto": solicitud_obj.presupuesto,
+            "fecha_limite": solicitud_obj.fecha_limite.isoformat() if solicitud_obj.fecha_limite else None,
+            "prioridad": solicitud_obj.prioridad,
+            "estado": solicitud_obj.estado.value,
+            "notas_internas": solicitud_obj.notas_internas,
+            "created_at": solicitud_obj.created_at.isoformat(),
+            "updated_at": solicitud_obj.updated_at.isoformat(),
+        },
+        "rfqs": [],
+        "cotizaciones": [],
+        "orden_compra": None,
+        "tracking": None,
+    }
+
+    # Procesar RFQs y sus cotizaciones
+    for rfq_obj in solicitud_obj.rfqs:
+        rfq_data = {
+            "id": rfq_obj.id,
+            "numero_rfq": rfq_obj.numero_rfq,
+            "asunto": rfq_obj.asunto,
+            "contenido": rfq_obj.contenido,
+            "estado": rfq_obj.estado.value,
+            "fecha_envio": rfq_obj.fecha_envio.isoformat() if rfq_obj.fecha_envio else None,
+            "fecha_respuesta": rfq_obj.fecha_respuesta.isoformat() if rfq_obj.fecha_respuesta else None,
+            "proveedor": {
+                "id": rfq_obj.proveedor.id,
+                "nombre": rfq_obj.proveedor.nombre,
+                "email": rfq_obj.proveedor.email,
+                "telefono": rfq_obj.proveedor.telefono,
+                "categoria": rfq_obj.proveedor.categoria,
+                "rating": rfq_obj.proveedor.rating,
+            },
+            "cotizaciones": [],
+        }
+
+        # Cotizaciones de este RFQ
+        for cot_obj in rfq_obj.cotizaciones:
+            cot_data = {
+                "id": cot_obj.id,
+                "precio_total": cot_obj.precio_total,
+                "precio_unitario": cot_obj.precio_unitario,
+                "moneda": cot_obj.moneda,
+                "tiempo_entrega": cot_obj.tiempo_entrega,
+                "condiciones_pago": cot_obj.condiciones_pago,
+                "garantia": cot_obj.garantia,
+                "observaciones": cot_obj.observaciones,
+                "es_valida": cot_obj.es_valida,
+                "puntaje_ia": cot_obj.puntaje_ia,
+                "created_at": cot_obj.created_at.isoformat(),
+            }
+            rfq_data["cotizaciones"].append(cot_data)
+            resultado["cotizaciones"].append(cot_data)
+
+        resultado["rfqs"].append(rfq_data)
+
+    # Procesar Orden de Compra (si existe)
+    if solicitud_obj.ordenes_compra:
+        oc_obj = solicitud_obj.ordenes_compra[0]  # Normalmente hay solo una
+        resultado["orden_compra"] = {
+            "id": oc_obj.id,
+            "numero_orden": oc_obj.numero_orden,
+            "estado": oc_obj.estado.value,
+            "monto_total": oc_obj.monto_total,
+            "moneda": oc_obj.moneda,
+            "fecha_emision": oc_obj.fecha_emision.isoformat() if oc_obj.fecha_emision else None,
+            "fecha_entrega_esperada": oc_obj.fecha_entrega_esperada.isoformat() if oc_obj.fecha_entrega_esperada else None,
+            "fecha_entrega_real": oc_obj.fecha_entrega_real.isoformat() if oc_obj.fecha_entrega_real else None,
+            "aprobado_por": oc_obj.aprobado_por,
+            "fecha_aprobacion": oc_obj.fecha_aprobacion.isoformat() if oc_obj.fecha_aprobacion else None,
+            "created_at": oc_obj.created_at.isoformat(),
+        }
+
+        # Procesar Tracking (si existe)
+        if oc_obj.envio_tracking:
+            tracking_obj = oc_obj.envio_tracking
+            resultado["tracking"] = {
+                "id": tracking_obj.id,
+                "estado": tracking_obj.estado.value,
+                "tracking_number": tracking_obj.tracking_number,
+                "proveedor_envio": tracking_obj.proveedor_envio,
+                "fecha_envio": tracking_obj.fecha_envio.isoformat() if tracking_obj.fecha_envio else None,
+                "fecha_entrega_estimada": tracking_obj.fecha_entrega_estimada.isoformat() if tracking_obj.fecha_entrega_estimada else None,
+                "fecha_entrega_real": tracking_obj.fecha_entrega_real.isoformat() if tracking_obj.fecha_entrega_real else None,
+                "ubicacion_actual": tracking_obj.ubicacion_actual,
+                "ciudad_origen": tracking_obj.ciudad_origen,
+                "ciudad_destino": tracking_obj.ciudad_destino,
+                "notas": tracking_obj.notas,
+                "eventos": tracking_obj.eventos,
+                "updated_at": tracking_obj.updated_at.isoformat(),
+            }
+
+    return resultado
+
+
 # Instancias globales de CRUD
 solicitud = CRUDSolicitud(Solicitud)
 proveedor = CRUDProveedor(Proveedor)
 rfq = CRUDRFQ(RFQ)
 cotizacion = CRUDCotizacion(Cotizacion)
 orden_compra = CRUDOrdenCompra(OrdenCompra)
+envio_tracking = CRUDEnvioTracking(EnvioTracking)

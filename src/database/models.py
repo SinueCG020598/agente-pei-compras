@@ -17,6 +17,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Boolean,
+    JSON,
 )
 from sqlalchemy.orm import relationship
 import enum
@@ -54,6 +55,19 @@ class EstadoOrdenCompra(str, enum.Enum):
     EN_PROCESO = "en_proceso"
     COMPLETADA = "completada"
     CANCELADA = "cancelada"
+
+
+class EstadoEnvio(str, enum.Enum):
+    """Estados posibles de un envío."""
+
+    PENDIENTE = "pendiente"
+    EN_TRANSITO = "en_transito"
+    EN_ADUANA = "en_aduana"
+    EN_DISTRIBUCION = "en_distribucion"
+    EN_ENTREGA = "en_entrega"
+    ENTREGADO = "entregado"
+    DEVUELTO = "devuelto"
+    CANCELADO = "cancelado"
 
 
 class Solicitud(Base):
@@ -384,7 +398,80 @@ class OrdenCompra(Base):
     # Relaciones
     solicitud = relationship("Solicitud", back_populates="ordenes_compra")
     cotizacion = relationship("Cotizacion", back_populates="ordenes_compra")
+    envio_tracking = relationship(
+        "EnvioTracking", back_populates="orden_compra", uselist=False, cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         """Representación en string del modelo."""
         return f"<OrdenCompra(id={self.id}, numero={self.numero_orden}, estado={self.estado})>"
+
+
+class EnvioTracking(Base):
+    """
+    Modelo de Tracking de Envío.
+
+    Representa el seguimiento de un envío asociado a una orden de compra.
+
+    Attributes:
+        id: Identificador único
+        orden_compra_id: ID de la orden de compra relacionada
+        estado: Estado actual del envío
+        tracking_number: Número de seguimiento del paquete
+        proveedor_envio: Nombre del proveedor de envío (DHL, FedEx, etc.)
+        fecha_envio: Fecha en que se envió el paquete
+        fecha_entrega_estimada: Fecha estimada de entrega
+        fecha_entrega_real: Fecha real de entrega
+        ubicacion_actual: Ubicación actual del paquete
+        ciudad_origen: Ciudad de origen del envío
+        ciudad_destino: Ciudad de destino del envío
+        notas: Notas adicionales sobre el envío
+        eventos: JSON con historial de eventos de tracking
+        created_at: Fecha de creación
+        updated_at: Fecha de última actualización
+    """
+
+    __tablename__ = "envios_tracking"
+
+    # Campos principales
+    id = Column(Integer, primary_key=True, index=True)
+    orden_compra_id = Column(
+        Integer, ForeignKey("ordenes_compra.id"), nullable=False, unique=True, index=True
+    )
+
+    # Información del envío
+    estado = Column(
+        Enum(EstadoEnvio),
+        default=EstadoEnvio.PENDIENTE,
+        nullable=False,
+        index=True,
+    )
+    tracking_number = Column(String(100), nullable=True, index=True)
+    proveedor_envio = Column(String(100), nullable=True)  # DHL, FedEx, Estafeta, etc.
+
+    # Fechas
+    fecha_envio = Column(DateTime, nullable=True)
+    fecha_entrega_estimada = Column(DateTime, nullable=True)
+    fecha_entrega_real = Column(DateTime, nullable=True)
+
+    # Ubicación
+    ubicacion_actual = Column(String(300), nullable=True)
+    ciudad_origen = Column(String(100), nullable=True)
+    ciudad_destino = Column(String(100), nullable=True)
+
+    # Información adicional
+    notas = Column(Text, nullable=True)
+    eventos = Column(JSON, nullable=True)  # Historial de eventos de tracking
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    # Relación
+    orden_compra = relationship("OrdenCompra", back_populates="envio_tracking")
+
+    def __repr__(self) -> str:
+        """Representación en string del modelo."""
+        return f"<EnvioTracking(id={self.id}, orden_id={self.orden_compra_id}, estado={self.estado})>"
