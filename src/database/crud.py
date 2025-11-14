@@ -250,6 +250,58 @@ class CRUDSolicitud(CRUDBase[Solicitud]):
             return self.update(db, db_obj=solicitud, obj_in={"estado": nuevo_estado})
         return None
 
+    def count(self, db: Session) -> int:
+        """
+        Cuenta el total de solicitudes.
+
+        Args:
+            db: Sesión de base de datos
+
+        Returns:
+            Número total de solicitudes
+        """
+        return db.query(Solicitud).count()
+
+    def count_by_estado(self, db: Session, estado: EstadoSolicitud) -> int:
+        """
+        Cuenta solicitudes por estado.
+
+        Args:
+            db: Sesión de base de datos
+            estado: Estado a filtrar
+
+        Returns:
+            Número de solicitudes en ese estado
+        """
+        return db.query(Solicitud).filter(Solicitud.estado == estado).count()
+
+    def get_by_fecha_rango(
+        self, db: Session, fecha_desde: datetime, fecha_hasta: datetime = None
+    ) -> List[Solicitud]:
+        """
+        Obtiene solicitudes en un rango de fechas.
+
+        Args:
+            db: Sesión de base de datos
+            fecha_desde: Fecha inicial
+            fecha_hasta: Fecha final (opcional, por defecto ahora)
+
+        Returns:
+            Lista de solicitudes en el rango
+        """
+        from datetime import datetime
+
+        if fecha_hasta is None:
+            fecha_hasta = datetime.utcnow()
+
+        return (
+            db.query(Solicitud)
+            .filter(Solicitud.created_at >= fecha_desde)
+            .filter(Solicitud.created_at <= fecha_hasta)
+            .order_by(desc(Solicitud.created_at))
+            .all()
+        )
+
 
 class CRUDProveedor(CRUDBase[Proveedor]):
     """Operaciones CRUD específicas para Proveedor."""

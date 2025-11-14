@@ -11,6 +11,32 @@ Sistema inteligente de automatización de compras usando agentes AI para PEI.
 
 PEI Compras AI es un sistema multi-agente que automatiza el proceso completo de compras empresariales, desde la recepción de solicitudes hasta la generación de órdenes de compra.
 
+## 🎯 Estado del Proyecto
+
+| Fase | Estado | Descripción | Documentación |
+|------|--------|-------------|---------------|
+| **Fase 1** | ✅ **Completada** | Base de Datos + Modelos (6 modelos, CRUD, migraciones) | [Resumen FASE 1](docs/RESUMEN_FASE_1.md) / [Instrucciones](docs/INSTRUCCIONES_FASE_1.md) |
+| **Fase 2** | ✅ **Completada** | Agente Receptor + Formulario Web Streamlit | [Resumen FASE 2](docs/RESUMEN_FASE_2.md) / [Instrucciones](docs/INSTRUCCIONES_FASE_2.md) |
+| **Fase 3** | ✅ **Completada** | Búsqueda Web de Proveedores (Serper API + Comparador) | [Resumen FASE 3](docs/RESUMEN_FASE_3.md) / [Instrucciones](docs/COMO_PROBAR_FASE_3.md) |
+| **Fase 4** | ⏳ Pendiente | Generador RFQ + Email Service | - |
+| **Fase 5** | ⏳ Pendiente | WhatsApp Básico (Evolution API) | - |
+| **Fase 6** | ⏳ Pendiente | Monitor + Comparador de Cotizaciones | - |
+| **Fase 7** | ⏳ Pendiente | Audio + Imágenes + Refinamiento | - |
+
+**Versión actual**: `0.5.0`
+
+### ✅ Funcionalidades Implementadas
+
+- ✅ **Base de Datos Completa**: 6 modelos con relaciones, CRUD operations, migraciones Alembic
+- ✅ **Agente Receptor**: Procesamiento de lenguaje natural con OpenAI (84% cobertura)
+- ✅ **Formulario Web**: Interfaz Streamlit profesional con 3 tabs
+- ✅ **SearchService**: Búsqueda web con Serper API (Google Search)
+- ✅ **Agente Investigador**: Búsqueda multi-fuente (BD + Web + E-commerce)
+- ✅ **Comparador de Precios**: Análisis inteligente de precios y recomendaciones
+- ✅ **Tests**: 30+ tests unitarios e integración (100% passed)
+- ✅ **Tracking de Envíos**: Sistema completo de seguimiento de órdenes
+- ⚙️ **Servicios Externos**: OpenAI, WhatsApp, Email, Search (implementados)
+
 ### Características Principales
 
 - **Recepción Multi-canal**: Solicitudes desde WhatsApp (Evolution API) y formularios web
@@ -316,10 +342,90 @@ Para migrar de SQLite a PostgreSQL:
 
 ## Documentación
 
+### 📚 Documentación General
 - [Arquitectura del Sistema](docs/architecture.md)
 - [Documentación API](docs/api_docs.md)
 - [Guía de Deployment](docs/deployment.md)
 - [Setup Fase 0](docs/fase_0_setup.md)
+
+### 📖 Documentación por Fases
+
+#### Fase 1: Base de Datos + Modelos ✅
+- [Resumen FASE 1](docs/RESUMEN_FASE_1.md) - Resumen ejecutivo de la implementación
+- [Instrucciones FASE 1](docs/INSTRUCCIONES_FASE_1.md) - Guía de pruebas paso a paso
+- [Documentación Técnica DB](docs/fase_1_database.md) - Arquitectura y modelos detallados
+- [Roadmap de Mejoras](docs/MEJORAS_ROADMAP.md) - Plan de mejoras futuras
+
+#### Fase 2: Agente Receptor + Formulario Web ✅
+- [Resumen FASE 2](docs/RESUMEN_FASE_2.md) - Resumen ejecutivo de la implementación
+- [Instrucciones FASE 2](docs/INSTRUCCIONES_FASE_2.md) - **⭐ Guía completa de pruebas con comandos**
+- Archivos implementados:
+  - `src/agents/receptor.py` - Agente Receptor (320+ líneas, 84% coverage)
+  - `src/prompts/receptor_prompt.txt` - Prompt del agente (150+ líneas)
+  - `frontend/app.py` - Aplicación Streamlit (670+ líneas)
+  - `tests/test_agente_receptor.py` - Suite de tests (500+ líneas, 18/18 passed)
+
+#### Fase 3: Búsqueda Web de Proveedores ✅
+- [Resumen FASE 3](docs/RESUMEN_FASE_3.md) - Resumen ejecutivo de la implementación
+- [Cómo Probar FASE 3](docs/COMO_PROBAR_FASE_3.md) - **⭐ Guía completa de pruebas con comandos**
+- Archivos implementados:
+  - `src/services/search_service.py` - SearchService con Serper API (180+ líneas nuevas)
+  - `src/agents/investigador.py` - Agente Investigador multi-fuente (180+ líneas)
+  - `src/agents/comparador_precios.py` - Comparador de Precios (120+ líneas)
+  - `src/prompts/investigador_prompt.txt` - Prompt del Investigador (70+ líneas)
+  - `tests/test_fase_3.py` - Suite de tests (350+ líneas, 12 tests)
+  - `test_fase_3_manual.py` - Script de prueba manual interactivo
+
+### 🚀 Quick Start - FASE 3
+
+```bash
+# 1. Configurar API key de Serper
+echo "SERPER_API_KEY=tu-api-key-aqui" >> .env
+# Obtén tu API key gratis en: https://serper.dev (2500 búsquedas/mes)
+
+# 2. Ejecutar tests
+pytest tests/test_fase_3.py -v
+# ✅ 12 passed in 2.5s
+
+# 3. Probar búsqueda web
+python test_fase_3_manual.py
+# 🌐 Prueba SearchService + Investigador + Comparador
+
+# Ejemplo rápido: Buscar proveedores
+python3 << 'EOF'
+from src.agents.investigador import buscar_proveedores
+
+productos = [{"nombre": "Mouse inalámbrico", "cantidad": 10, "categoria": "tecnologia"}]
+resultado = buscar_proveedores(productos, usar_web=True)
+
+print(f"✅ Proveedores BD: {resultado['resumen']['total_proveedores_bd']}")
+print(f"✅ Proveedores Web: {resultado['resumen']['total_proveedores_web']}")
+print(f"✅ Enlaces Ecommerce: {resultado['resumen']['total_enlaces_ecommerce']}")
+EOF
+```
+
+Ver [COMO_PROBAR_FASE_3.md](docs/COMO_PROBAR_FASE_3.md) para guía detallada con todos los pasos y comandos.
+
+### 🚀 Quick Start - FASE 2
+
+```bash
+# 1. Activar entorno
+source venv/bin/activate
+
+# 2. Ejecutar tests del Agente Receptor
+pytest tests/test_agente_receptor.py -v
+# ✅ 18 passed, 2 skipped in 1.06s
+
+# 3. Probar agente manualmente
+python test_agente_manual.py
+# 🤖 Prueba 3 solicitudes: simple, compleja, informal
+
+# 4. Ejecutar aplicación Streamlit
+streamlit run frontend/app.py
+# 🌐 http://localhost:8501
+```
+
+Ver [INSTRUCCIONES_FASE_2.md](docs/INSTRUCCIONES_FASE_2.md) para guía detallada con todos los pasos y comandos.
 
 ## Roadmap
 

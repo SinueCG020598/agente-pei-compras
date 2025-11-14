@@ -315,6 +315,174 @@ class SearchService:
         """
         return self.api_key is not None and self.api_key != ""
 
+    def buscar_proveedores_web(
+        self,
+        producto: str,
+        ubicacion: str = "México",
+        num_resultados: int = 10
+    ) -> List[Dict]:
+        """
+        Busca proveedores en internet usando Google Search (FASE 3)
+
+        Args:
+            producto: Nombre del producto a buscar
+            ubicacion: País o ciudad para filtrar resultados
+            num_resultados: Número máximo de resultados
+
+        Returns:
+            Lista de proveedores encontrados en web
+        """
+        if not self.is_available():
+            return []
+
+        try:
+            query = f"{producto} proveedor mayoreo distribuidor {ubicacion}"
+
+            payload = {
+                "q": query,
+                "num": num_resultados,
+                "gl": "mx",  # Geolocalización México
+                "hl": "es"   # Idioma español
+            }
+
+            response = requests.post(
+                self.api_url,
+                json=payload,
+                headers=self.headers,
+                timeout=30
+            )
+            response.raise_for_status()
+
+            resultados = response.json()
+
+            proveedores_web = []
+            for item in resultados.get("organic", []):
+                proveedores_web.append({
+                    "nombre": item.get("title"),
+                    "url": item.get("link"),
+                    "descripcion": item.get("snippet"),
+                    "fuente": "web_search",
+                    "score_relevancia": item.get("position", 100)
+                })
+
+            logger.info(f"✓ Encontrados {len(proveedores_web)} proveedores web para {producto}")
+            return proveedores_web
+
+        except Exception as e:
+            logger.error(f"❌ Error buscando proveedores web: {e}")
+            return []
+
+    def buscar_en_ecommerce(
+        self,
+        producto: str,
+        marketplaces: List[str] = None
+    ) -> List[Dict]:
+        """
+        Busca producto en marketplaces (Amazon, MercadoLibre, etc.) - FASE 3
+        Devuelve enlaces directos para compra manual
+
+        Args:
+            producto: Nombre del producto
+            marketplaces: Lista de marketplaces a buscar (None = todos)
+
+        Returns:
+            Lista de productos encontrados con enlaces de compra
+        """
+        if not self.is_available():
+            return []
+
+        if marketplaces is None:
+            marketplaces = ["amazon.com.mx", "mercadolibre.com.mx", "liverpool.com.mx"]
+
+        resultados_ecommerce = []
+
+        for marketplace in marketplaces:
+            try:
+                query = f"{producto} site:{marketplace}"
+
+                payload = {
+                    "q": query,
+                    "num": 5,
+                    "gl": "mx",
+                    "hl": "es"
+                }
+
+                response = requests.post(
+                    self.api_url,
+                    json=payload,
+                    headers=self.headers,
+                    timeout=30
+                )
+                response.raise_for_status()
+
+                data = response.json()
+
+                marketplace_name = self._get_marketplace_name(marketplace)
+
+                for item in data.get("organic", []):
+                    precio_aprox = self._extraer_precio(item.get("snippet", ""))
+
+                    resultados_ecommerce.append({
+                        "marketplace": marketplace_name,
+                        "producto": item.get("title"),
+                        "url_compra": item.get("link"),
+                        "precio_aprox": precio_aprox,
+                        "descripcion": item.get("snippet"),
+                        "disponible_compra_directa": True
+                    })
+
+                logger.info(f"✓ Encontrados {len(resultados_ecommerce)} productos en {marketplace_name}")
+
+            except Exception as e:
+                logger.error(f"❌ Error buscando en {marketplace}: {e}")
+                continue
+
+        return resultados_ecommerce
+
+    def buscar_mejores_precios(self, producto: str) -> Dict:
+        """
+        Busca mejores precios en múltiples fuentes - FASE 3
+        Combina búsqueda de proveedores y ecommerce
+
+        Returns:
+            Dict con todos los resultados organizados
+        """
+        logger.info(f"🔍 Buscando mejores precios para: {producto}")
+        return {
+            "proveedores_web": self.buscar_proveedores_web(producto),
+            "ecommerce": self.buscar_en_ecommerce(producto),
+            "producto_buscado": producto
+        }
+
+    def _extraer_precio(self, texto: str) -> str:
+        """Extrae precio del texto usando regex"""
+        import re
+
+        # Buscar patrones como: $1,234.56 o $1234 o MXN 1,234
+        patrones = [
+            r'\$[\d,]+\.?\d*',  # $1,234.56
+            r'MXN\s*[\d,]+\.?\d*',  # MXN 1234
+            r'[\d,]+\.?\d*\s*pesos',  # 1234 pesos
+        ]
+
+        for patron in patrones:
+            match = re.search(patron, texto, re.IGNORECASE)
+            if match:
+                return match.group(0)
+
+        return "Precio no disponible"
+
+    def _get_marketplace_name(self, domain: str) -> str:
+        """Convierte dominio en nombre amigable"""
+        mapping = {
+            "amazon.com.mx": "Amazon México",
+            "mercadolibre.com.mx": "MercadoLibre",
+            "liverpool.com.mx": "Liverpool",
+            "walmart.com.mx": "Walmart México",
+            "homedepot.com.mx": "Home Depot"
+        }
+        return mapping.get(domain, domain)
+
 
 # Instancia global del servicio
 search_service = SearchService()

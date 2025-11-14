@@ -109,6 +109,7 @@ class Solicitud(Base):
     presupuesto = Column(Float, nullable=True)
     fecha_limite = Column(DateTime, nullable=True)
     prioridad = Column(Integer, default=3)  # 1-5
+    urgencia = Column(String(20), default="normal")  # normal, alta, urgente
 
     # Estado y tracking
     estado = Column(

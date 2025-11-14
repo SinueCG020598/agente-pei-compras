@@ -485,3 +485,59 @@ Genera un análisis comparativo y recomienda la mejor opción."""
 
 # Instancia global del servicio
 openai_service = OpenAIService()
+
+
+# Helper function para compatibilidad con agentes
+def llamar_agente(
+    prompt_sistema: str,
+    mensaje_usuario: str,
+    modelo: str = "gpt-4o-mini",
+    temperatura: float = 0.7,
+    formato_json: bool = False
+) -> str:
+    """
+    Función helper para llamar al agente de OpenAI.
+    Compatible con el patrón usado en los agentes de FASE 3.
+
+    Args:
+        prompt_sistema: Prompt del sistema (instrucciones del agente)
+        mensaje_usuario: Mensaje del usuario
+        modelo: Modelo a usar (gpt-4o-mini o gpt-4o)
+        temperatura: Temperatura (0.0-1.0)
+        formato_json: Si True, fuerza respuesta en formato JSON
+
+    Returns:
+        Respuesta del modelo como string
+
+    Raises:
+        OpenAIError: Si hay error en la llamada a OpenAI
+    """
+    try:
+        messages = [
+            {"role": "system", "content": prompt_sistema},
+            {"role": "user", "content": mensaje_usuario}
+        ]
+
+        kwargs = {
+            "model": modelo,
+            "messages": messages,
+            "temperature": temperatura
+        }
+
+        if formato_json:
+            kwargs["response_format"] = {"type": "json_object"}
+
+        response = openai_service.client.chat.completions.create(**kwargs)
+
+        content = response.choices[0].message.content
+        if not content:
+            raise ValueError("Respuesta vacía de OpenAI")
+
+        return content
+
+    except OpenAIError as e:
+        logger.error(f"Error llamando al agente: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Error inesperado: {e}")
+        raise

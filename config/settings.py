@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     # Configuración del proyecto
     PROJECT_NAME: str = "PEI Compras AI"
-    VERSION: str = "0.3.0"
+    VERSION: str = "0.4.0"
     API_V1_STR: str = "/api/v1"
     DEBUG: bool = False
 
