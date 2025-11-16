@@ -912,6 +912,177 @@ def consultar_historial(db: Session, solicitud_id: int) -> dict:
     return resultado
 
 
+# ============================================================================
+# FUNCIONES HELPER PARA FASE 4
+# ============================================================================
+
+
+def crear_solicitud(
+    db: Session,
+    origen: str,
+    contenido: str,
+    productos: List[dict],
+    urgencia: str = "normal",
+    usuario_nombre: str = "Sistema",
+    usuario_contacto: str = "sistema@pei.com",
+) -> Solicitud:
+    """
+    Crea una nueva solicitud a partir de datos procesados.
+
+    Args:
+        db: Sesión de base de datos
+        origen: Origen de la solicitud (whatsapp, formulario, email, etc.)
+        contenido: Contenido original de la solicitud
+        productos: Lista de productos extraídos
+        urgencia: Nivel de urgencia (normal, alta, urgente)
+        usuario_nombre: Nombre del usuario solicitante
+        usuario_contacto: Email o teléfono del usuario
+
+    Returns:
+        Solicitud creada
+
+    Example:
+        >>> productos = [{"nombre": "PLC Siemens", "cantidad": "5", "categoria": "Automatización"}]
+        >>> solicitud = crear_solicitud(db, "formulario", "Necesito PLCs", productos, "alta")
+    """
+    # Determinar categoría principal de los productos
+    categoria = productos[0].get("categoria", "General") if productos else "General"
+
+    # Calcular presupuesto total estimado si viene en productos
+    presupuesto_total = sum(
+        float(p.get("presupuesto_estimado", 0)) for p in productos if p.get("presupuesto_estimado")
+    )
+
+    # Crear descripción detallada
+    descripcion_productos = "\n".join([
+        f"- {p.get('nombre', 'N/A')} (Cant: {p.get('cantidad', 'N/A')})"
+        for p in productos
+    ])
+    descripcion_completa = f"{contenido}\n\nProductos:\n{descripcion_productos}"
+
+    # Mapear urgencia a prioridad numérica
+    urgencia_a_prioridad = {
+        "normal": 3,
+        "alta": 4,
+        "urgente": 5,
+    }
+    prioridad = urgencia_a_prioridad.get(urgencia, 3)
+
+    # Crear solicitud
+    solicitud_data = {
+        "usuario_nombre": usuario_nombre,
+        "usuario_contacto": usuario_contacto,
+        "descripcion": descripcion_completa,
+        "categoria": categoria,
+        "presupuesto": presupuesto_total if presupuesto_total > 0 else None,
+        "prioridad": prioridad,
+        "urgencia": urgencia,
+        "estado": EstadoSolicitud.PENDIENTE,
+        "notas_internas": f"Origen: {origen}. Productos detectados: {len(productos)}",
+    }
+
+    nueva_solicitud = solicitud.create(db, obj_in=solicitud_data)
+    logger.info(f"Solicitud creada: ID={nueva_solicitud.id}, Productos={len(productos)}")
+
+    return nueva_solicitud
+
+
+def crear_rfq(
+    db: Session,
+    solicitud_id: int,
+    proveedor_id: int,
+    contenido: str,
+    asunto: str = None,
+) -> RFQ:
+    """
+    Crea un nuevo RFQ con número automático.
+
+    Args:
+        db: Sesión de base de datos
+        solicitud_id: ID de la solicitud asociada
+        proveedor_id: ID del proveedor destinatario
+        contenido: Contenido del RFQ generado
+        asunto: Asunto del email (opcional, se genera automáticamente)
+
+    Returns:
+        RFQ creado
+
+    Example:
+        >>> rfq = crear_rfq(db, solicitud_id=1, proveedor_id=5, contenido="Estimado proveedor...")
+    """
+    # Generar número de RFQ único
+    from datetime import datetime
+
+    year = datetime.now().year
+    # Contar RFQs de este año
+    count = db.query(RFQ).filter(
+        RFQ.numero_rfq.like(f"RFQ-{year}-%")
+    ).count()
+    numero_rfq = f"RFQ-{year}-{count + 1:04d}"
+
+    # Generar asunto si no se proporciona
+    if not asunto:
+        asunto = f"Solicitud de Cotización - {numero_rfq}"
+
+    # Crear RFQ
+    rfq_data = {
+        "solicitud_id": solicitud_id,
+        "proveedor_id": proveedor_id,
+        "numero_rfq": numero_rfq,
+        "asunto": asunto,
+        "contenido": contenido,
+        "estado": EstadoRFQ.BORRADOR,
+    }
+
+    nuevo_rfq = rfq.create(db, obj_in=rfq_data)
+    logger.info(f"RFQ creado: {numero_rfq}, Proveedor ID={proveedor_id}")
+
+    return nuevo_rfq
+
+
+def actualizar_estado_solicitud(
+    db: Session,
+    solicitud_id: int,
+    nuevo_estado: str,
+) -> Optional[Solicitud]:
+    """
+    Actualiza el estado de una solicitud.
+
+    Wrapper conveniente para cambiar_estado que acepta strings.
+
+    Args:
+        db: Sesión de base de datos
+        solicitud_id: ID de la solicitud
+        nuevo_estado: Nuevo estado (string: "pendiente", "procesando", "rfqs_enviados", etc.)
+
+    Returns:
+        Solicitud actualizada o None si no existe
+
+    Example:
+        >>> actualizar_estado_solicitud(db, 1, "procesando")
+        >>> actualizar_estado_solicitud(db, 1, "rfqs_enviados")
+    """
+    # Mapear string a EstadoSolicitud (aceptar variantes)
+    estado_map = {
+        "pendiente": EstadoSolicitud.PENDIENTE,
+        "procesando": EstadoSolicitud.EN_PROCESO,
+        "en_proceso": EstadoSolicitud.EN_PROCESO,
+        "rfqs_enviados": EstadoSolicitud.EN_PROCESO,  # Mantener como EN_PROCESO
+        "cotizaciones_recibidas": EstadoSolicitud.COTIZACIONES_RECIBIDAS,
+        "aprobada": EstadoSolicitud.APROBADA,
+        "completada": EstadoSolicitud.COMPLETADA,
+        "cancelada": EstadoSolicitud.CANCELADA,
+        "error": EstadoSolicitud.CANCELADA,  # Mapear error a cancelada
+    }
+
+    estado_enum = estado_map.get(nuevo_estado.lower())
+    if not estado_enum:
+        logger.warning(f"Estado desconocido: {nuevo_estado}, usando PENDIENTE por defecto")
+        estado_enum = EstadoSolicitud.PENDIENTE
+
+    return solicitud.cambiar_estado(db, solicitud_id, estado_enum)
+
+
 # Instancias globales de CRUD
 solicitud = CRUDSolicitud(Solicitud)
 proveedor = CRUDProveedor(Proveedor)

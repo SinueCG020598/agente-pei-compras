@@ -25,6 +25,9 @@ from src.database.crud import solicitud as crud_solicitud
 from src.database.models import EstadoSolicitud
 from config.settings import settings
 
+# Importar tab Generar RFQs
+from frontend.tab_generar_rfqs import tab_generar_rfqs
+
 # Configurar logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -197,7 +200,8 @@ def get_estadisticas_db(db: Session) -> Dict:
         completadas = crud_solicitud.count_by_estado(db, EstadoSolicitud.COMPLETADA)
 
         # Solicitudes del último mes
-        fecha_mes_atras = datetime.utcnow() - timedelta(days=30)
+        from datetime import timezone
+        fecha_mes_atras = datetime.now(timezone.utc) - timedelta(days=30)
         recientes = len(crud_solicitud.get_by_fecha_rango(db, fecha_mes_atras))
 
         return {
@@ -870,8 +874,8 @@ def main():
     )
 
     # Tabs principales
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["📝 Nueva Solicitud", "🔍 Buscar Proveedores", "📚 Mis Solicitudes", "📊 Estadísticas"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["📝 Nueva Solicitud", "🔍 Buscar Proveedores", "📧 Generar RFQs", "📚 Mis Solicitudes", "📊 Estadísticas"]
     )
 
     with tab1:
@@ -881,11 +885,13 @@ def main():
         tab_buscar_proveedores()
 
     with tab3:
-        tab_mis_solicitudes()
+        tab_generar_rfqs()
 
     with tab4:
-        tab_estadisticas()
+        tab_mis_solicitudes()
 
+    with tab5:
+        tab_estadisticas()
 
 if __name__ == "__main__":
     main()

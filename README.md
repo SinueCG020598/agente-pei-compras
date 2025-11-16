@@ -18,12 +18,12 @@ PEI Compras AI es un sistema multi-agente que automatiza el proceso completo de 
 | **Fase 1** | ✅ **Completada** | Base de Datos + Modelos (6 modelos, CRUD, migraciones) | [Resumen FASE 1](docs/RESUMEN_FASE_1.md) / [Instrucciones](docs/INSTRUCCIONES_FASE_1.md) |
 | **Fase 2** | ✅ **Completada** | Agente Receptor + Formulario Web Streamlit | [Resumen FASE 2](docs/RESUMEN_FASE_2.md) / [Instrucciones](docs/INSTRUCCIONES_FASE_2.md) |
 | **Fase 3** | ✅ **Completada** | Búsqueda Web de Proveedores (Serper API + Comparador) | [Resumen FASE 3](docs/RESUMEN_FASE_3.md) / [Instrucciones](docs/COMO_PROBAR_FASE_3.md) |
-| **Fase 4** | ⏳ Pendiente | Generador RFQ + Email Service | - |
+| **Fase 4** | ✅ **Completada** | Generador RFQ + Orquestador + API REST | [Documentación FASE 4](docs/FASE_4_GENERADOR_RFQ.md) |
 | **Fase 5** | ⏳ Pendiente | WhatsApp Básico (Evolution API) | - |
 | **Fase 6** | ⏳ Pendiente | Monitor + Comparador de Cotizaciones | - |
 | **Fase 7** | ⏳ Pendiente | Audio + Imágenes + Refinamiento | - |
 
-**Versión actual**: `0.5.0`
+**Versión actual**: `0.6.0`
 
 ### ✅ Funcionalidades Implementadas
 
@@ -33,7 +33,11 @@ PEI Compras AI es un sistema multi-agente que automatiza el proceso completo de 
 - ✅ **SearchService**: Búsqueda web con Serper API (Google Search)
 - ✅ **Agente Investigador**: Búsqueda multi-fuente (BD + Web + E-commerce)
 - ✅ **Comparador de Precios**: Análisis inteligente de precios y recomendaciones
-- ✅ **Tests**: 30+ tests unitarios e integración (100% passed)
+- ✅ **Generador RFQ**: Creación automática de RFQs profesionales con IA (87% cobertura)
+- ✅ **Email Service**: Envío SMTP de RFQs a múltiples proveedores
+- ✅ **Orquestador**: Flujo completo end-to-end (Receptor → Investigador → RFQ)
+- ✅ **API REST**: Endpoints FastAPI para procesamiento completo
+- ✅ **Tests**: 47+ tests unitarios e integración (14/17 FASE 4 passed)
 - ✅ **Tracking de Envíos**: Sistema completo de seguimiento de órdenes
 - ⚙️ **Servicios Externos**: OpenAI, WhatsApp, Email, Search (implementados)
 
@@ -375,6 +379,51 @@ Para migrar de SQLite a PostgreSQL:
   - `src/prompts/investigador_prompt.txt` - Prompt del Investigador (70+ líneas)
   - `tests/test_fase_3.py` - Suite de tests (350+ líneas, 12 tests)
   - `test_fase_3_manual.py` - Script de prueba manual interactivo
+
+#### Fase 4: Generador RFQ + Orquestador + API REST ✅
+- [Documentación FASE 4](docs/FASE_4_GENERADOR_RFQ.md) - **⭐ Documentación completa con guías y ejemplos**
+- Archivos implementados:
+  - `src/agents/generador_rfq.py` - Generador de RFQs (300+ líneas, 87% coverage)
+  - `src/agents/orquestador.py` - Orquestador end-to-end (270+ líneas)
+  - `src/prompts/generador_rfq_prompt.txt` - Prompt con 3 ejemplos (400+ líneas)
+  - `main.py` - API REST FastAPI (150+ líneas)
+  - `src/database/crud.py` - Funciones helper FASE 4 (180+ líneas nuevas)
+  - `tests/test_fase_4.py` - Suite de tests (580+ líneas, 17 tests)
+  - `test_fase_4_manual.py` - Script de prueba manual completo
+
+### 🚀 Quick Start - FASE 4
+
+```bash
+# 1. Configurar email SMTP (Gmail)
+echo "GMAIL_USER=tu-email@gmail.com" >> .env
+echo "GMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx" >> .env
+# Genera App Password en: https://myaccount.google.com/apppasswords
+
+# 2. Sembrar proveedores en BD
+python -m src.database.seed_proveedores
+# ✅ 15 proveedores agregados
+
+# 3. Iniciar API REST
+python main.py
+# 🚀 Server running on http://localhost:8000
+# 📚 Docs: http://localhost:8000/docs
+
+# 4. Procesar solicitud completa (en otra terminal)
+curl -X POST "http://localhost:8000/solicitud/procesar-completa" \
+     -H "Content-Type: application/json" \
+     -d '{"texto": "Necesito 5 PLCs Siemens S7-1200 urgente", "origen": "api"}'
+# ✅ Solicitud procesada, RFQs enviados a 3 proveedores
+
+# 5. Ejecutar tests
+pytest tests/test_fase_4.py -v -m "not integration"
+# ✅ 6/6 passed (100% tests unitarios)
+
+# 6. Prueba manual completa
+python test_fase_4_manual.py
+# 🚀 4 pruebas: RFQ Generator, CRUD, Archivos, Orquestador
+```
+
+Ver [FASE_4_GENERADOR_RFQ.md](docs/FASE_4_GENERADOR_RFQ.md) para documentación completa con arquitectura, ejemplos y troubleshooting.
 
 ### 🚀 Quick Start - FASE 3
 
